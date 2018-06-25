@@ -241,7 +241,6 @@ export class Control {
         Control.chartSwitchLanguage(tmp.language || "zh-cn");
     }
 
-
     static setHttpRequestParam(symbol, range, limit, since) {
         let str = "symbol=" + symbol + "&range=" + range;
         if (limit !== null)
@@ -582,7 +581,6 @@ export class Control {
         ChartSettings.save();
     }
 
-
     static switchSymbol(symbol) {
         if (Kline.instance.type === "stomp" && Kline.instance.stompClient.ws.readyState === 1) {
             Kline.instance.subscribed.unsubscribe();
@@ -619,6 +617,32 @@ export class Control {
     }
 
     static socketConnect() {
+        if(Kline.instance.type === "socket") {
+            let socket = Kline.instance.socketClient;
+
+            socket.on('disconnect', function(){
+                console.warn('socket disconnect');
+                Kline.instance.socketConnected = false;
+                Kline.instance.type === 'poll';
+                Kline.instance.timer = setTimeout(function () {
+                    Control.requestData(true);
+                }, Kline.instance.intervalTime);
+            });
+
+            socket.on('connect', function () {
+                console.log('socket connectd');
+                Kline.instance.type === 'socket';
+                Control.socketSubscribe();
+            });
+
+            if(socket.connected) {
+                Control.socketSubscribe();
+            }
+            else {
+                socket.connect();
+            }
+            return;
+        }
 
         if (!Kline.instance.stompClient || !Kline.instance.socketConnected) {
             if (Kline.instance.enableSockjs) {
@@ -651,4 +675,73 @@ export class Control {
         });
     }
 
+    static socketSubscribe() {
+        let socket = Kline.instance.socketClient;
+        console.log(socket.id, 'subscribe', Kline.instance.symbol);
+        socket.emit('subscribe', Kline.instance.symbol);
+        socket.on('message', function(message) {
+            let data = {};
+            let symbol = Kline.instance.symbol;
+            let period = Kline.instance.periodTagMap[Kline.instance.range];
+            if(message.trades && message.trades[symbol]) {
+                //data[`trades`] = message.trades[symbol];
+            }
+
+            if(message.orderbooks && message.orderbooks[symbol]) {
+                //data[`depths`] = message.orderbooks[symbol];
+            }
+
+            if(message.klines && message.klines[symbol] && message.klines[symbol][period]) {
+                data['lines'] = message.klines[symbol][period];
+            }
+
+            if(!Object.keys(data).length) {
+                return;
+            }
+
+//            console.log('message', data);
+            Control.requestSuccessHandler({
+                success: true,
+                data: data
+            });
+        });
+    }
+
+    static socketMessageHandler(message) {
+        let intervalTime = Kline.instance.intervalTime < Kline.instance.range ? Kline.instance.intervalTime : Kline.instance.range;
+        //if websocket pull
+        if(Kline.instance.pollTimer) {
+            clearTimeout(Kline.instance.pollTimer);
+        }
+        Kline.instance.pollTimer = setTimeout(Control.requestData, intervalTime * 3);
+
+        $("#chart_loading").removeClass("activated");
+
+        let chart = ChartManager.instance.getChart();
+        chart.setTitle();
+
+        //append Kline.instance.data
+        Kline.instance.data = eval(res.data);
+        console.log(`data`, Kline.instance.data);
+
+        let updateDataRes = Kline.instance.chartMgr.updateData("frame0.k0", Kline.instance.data.lines);
+        if (!updateDataRes) {
+            if(Kline.instance.timer) {
+                clearTimeout(Kline.instance.timer);
+            }
+            Kline.instance.timer = setTimeout(Control.requestData, intervalTime);
+            return;
+        }
+
+        if (Kline.instance.data.trades && Kline.instance.data.trades.length > 0) {
+            KlineTrade.instance.pushTrades(Kline.instance.data.trades);
+            KlineTrade.instance.klineTradeInit = true;
+        }
+        if (Kline.instance.data.depths) {
+            KlineTrade.instance.updateDepth(Kline.instance.data.depths);
+        }
+        Control.clearRefreshCounter();
+
+        ChartManager.instance.redraw('All', false);
+    }
 }

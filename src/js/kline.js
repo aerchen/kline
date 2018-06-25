@@ -30,7 +30,7 @@ export default class Kline {
         this.range = null;
         this.url = "";
         this.limit = 1000;
-        this.type = "poll";
+        this.type = "poll"; //["poll", "stomp", "socket"]
         this.subscribePath = "";
         this.sendPath = "";
         this.stompClient = null;
@@ -48,6 +48,7 @@ export default class Kline {
         this.paused = false;
         this.subscribed = null;
         this.disableFirebase = false;
+        this.socketClient = null;
 
         this.periodMap = {
             "01w": 7 * 86400 * 1000,
@@ -83,6 +84,22 @@ export default class Kline {
             "line": "line"
         };
 
+        this.periodTagMap = {
+            "604800000":"1w",
+            "259200000":"3d",
+            "86400000":"1d",
+            "43200000":"12h",
+            "21600000":"6h",
+            "14400000":"4h",
+            "7200000":"2h",
+            "3600000":"1h",
+            "1800000":"30m",
+            "900000":"15m",
+            "300000":"5m",
+            "180000":"3m",
+            "60000":"1m"
+        };
+
         Object.assign(this, option);
 
         if (!Kline.created) {
@@ -112,6 +129,10 @@ export default class Kline {
 
         setInterval(Control.refreshFunction, this.intervalTime);
         if (this.type === "stomp") {
+            Control.socketConnect();
+        }
+
+        if (this.type === "socket") {
             Control.socketConnect();
         }
 
