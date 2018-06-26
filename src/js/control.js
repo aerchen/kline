@@ -618,8 +618,12 @@ export class Control {
 
     static socketConnect() {
         if(Kline.instance.type === "socket") {
-            let socket = Kline.instance.socketClient;
+            //TODO add timer when conn't connect to websocket server
+            let intervalTime = Kline.instance.intervalTime < Kline.instance.range ? Kline.instance.intervalTime : Kline.instance.range;
+            console.log('intervalTime', intervalTime);
+            Kline.instance.socketTimer = setTimeout(Control.requestData, intervalTime);
 
+            let socket = Kline.instance.socketClient;
             socket.on('disconnect', function(){
                 console.warn('socket disconnect');
                 Kline.instance.socketConnected = false;
@@ -631,6 +635,7 @@ export class Control {
 
             socket.on('connect', function () {
                 console.log('socket connectd');
+                Kline.instance.socketConnected = true;
                 Kline.instance.type === 'socket';
                 Control.socketSubscribe();
             });
@@ -641,6 +646,7 @@ export class Control {
             else {
                 socket.connect();
             }
+
             return;
         }
 
@@ -680,40 +686,48 @@ export class Control {
         console.log(socket.id, 'subscribe', Kline.instance.symbol);
         socket.emit('subscribe', Kline.instance.symbol);
         socket.on('message', function(message) {
-            let data = {};
-            let symbol = Kline.instance.symbol;
-            let period = Kline.instance.periodTagMap[Kline.instance.range];
-            if(message.trades && message.trades[symbol]) {
-                //data[`trades`] = message.trades[symbol];
-            }
-
-            if(message.orderbooks && message.orderbooks[symbol]) {
-                //data[`depths`] = message.orderbooks[symbol];
-            }
-
-            if(message.klines && message.klines[symbol] && message.klines[symbol][period]) {
-                data['lines'] = message.klines[symbol][period];
-            }
-
-            if(!Object.keys(data).length) {
-                return;
-            }
-
-//            console.log('message', data);
-            Control.requestSuccessHandler({
-                success: true,
-                data: data
-            });
+            Control.socketMessageHandler(message);
         });
     }
 
     static socketMessageHandler(message) {
+        //set timer
         let intervalTime = Kline.instance.intervalTime < Kline.instance.range ? Kline.instance.intervalTime : Kline.instance.range;
-        //if websocket pull
-        if(Kline.instance.pollTimer) {
-            clearTimeout(Kline.instance.pollTimer);
+        if(Kline.instance.socketTimer) {
+            window.clearTimeout(Kline.instance.socketTimer);
+            Kline.instance.socketTimer = null;
         }
-        Kline.instance.pollTimer = setTimeout(Control.requestData, intervalTime * 3);
+        Kline.instance.socketTimer = setTimeout(Control.requestData, intervalTime);
+
+        //parse message
+        let data = {};
+        let symbol = Kline.instance.symbol;
+        let period = Kline.instance.periodTagMap[Kline.instance.range];
+
+        if(message.trades && message.trades[symbol]) {
+            data.trades = [];
+            message.trades[symbol].forEach(function (trade) {
+                data.trades.push({
+                    "amount": trade[2],
+                    "price": trade[1],
+                    "tid": trade[0],
+                    "time": trade[3],
+                    "type": trade[4] ? "buy" : "sell"
+                });
+            });
+        }
+
+        if(message.orderbooks && message.orderbooks[symbol]) {
+            data[`depths`] = message.orderbooks[symbol];
+        }
+
+        if(message.klines && message.klines[symbol] && message.klines[symbol][period]) {
+            data['lines'] = message.klines[symbol][period];
+        }
+
+        if(!Object.keys(data).length) {
+            return;
+        }
 
         $("#chart_loading").removeClass("activated");
 
@@ -721,27 +735,52 @@ export class Control {
         chart.setTitle();
 
         //append Kline.instance.data
-        Kline.instance.data = eval(res.data);
-        console.log(`data`, Kline.instance.data);
+        data = eval(data);
+        if(!Kline.instance.data) {
+            Kline.instance.data = {};
+        }
+        Object.keys(data).forEach(function(key) {
+            if(!Kline.instance.data[key]) {
+                Kline.instance.data[key] = data[key];
+                return;
+            }
+
+            if(key === `lines`) {
+                let lines = data[key];
+                if(Kline.instance.data[key][0][0] === lines[0][0]) {
+                    Kline.instance.data[key][0] = lines[0];
+                }
+                else {
+                    Kline.instance.data[key].unshift(...lines);
+                }
+            }
+            else if(key === `trades`) {
+                let trades = data[key];
+                Kline.instance.data[key] = trades[0];
+            }
+        });
 
         let updateDataRes = Kline.instance.chartMgr.updateData("frame0.k0", Kline.instance.data.lines);
-        if (!updateDataRes) {
-            if(Kline.instance.timer) {
-                clearTimeout(Kline.instance.timer);
+        if(Kline.instance.showTrade) {
+            if (Kline.instance.data.trades && Kline.instance.data.trades.length > 0) {
+                KlineTrade.instance.pushTrades(Kline.instance.data.trades);
+                KlineTrade.instance.klineTradeInit = true;
             }
+            if (Kline.instance.data.depths) {
+                KlineTrade.instance.updateDepth(Kline.instance.data.depths);
+            }
+        }
+
+        if (!updateDataRes) {
             Kline.instance.timer = setTimeout(Control.requestData, intervalTime);
             return;
         }
 
-        if (Kline.instance.data.trades && Kline.instance.data.trades.length > 0) {
-            KlineTrade.instance.pushTrades(Kline.instance.data.trades);
-            KlineTrade.instance.klineTradeInit = true;
+        if(Kline.instance.timer) {
+            window.clearTimeout(Kline.instance.timer);
         }
-        if (Kline.instance.data.depths) {
-            KlineTrade.instance.updateDepth(Kline.instance.data.depths);
-        }
-        Control.clearRefreshCounter();
 
+        Control.clearRefreshCounter();
         ChartManager.instance.redraw('All', false);
     }
 }

@@ -3764,6 +3764,14 @@ var _jquery = _interopRequireDefault(__webpack_require__(23));
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
+function _toConsumableArray(arr) { return _arrayWithoutHoles(arr) || _iterableToArray(arr) || _nonIterableSpread(); }
+
+function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance"); }
+
+function _iterableToArray(iter) { if (Symbol.iterator in Object(iter) || Object.prototype.toString.call(iter) === "[object Arguments]") return Array.from(iter); }
+
+function _arrayWithoutHoles(arr) { if (Array.isArray(arr)) { for (var i = 0, arr2 = new Array(arr.length); i < arr.length; i++) { arr2[i] = arr[i]; } return arr2; } }
+
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 function _defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } }
@@ -4509,6 +4517,10 @@ function () {
     key: "socketConnect",
     value: function socketConnect() {
       if (_kline.default.instance.type === "socket") {
+        //TODO add timer when conn't connect to websocket server
+        var intervalTime = _kline.default.instance.intervalTime < _kline.default.instance.range ? _kline.default.instance.intervalTime : _kline.default.instance.range;
+        console.log('intervalTime', intervalTime);
+        _kline.default.instance.socketTimer = setTimeout(Control.requestData, intervalTime);
         var socket = _kline.default.instance.socketClient;
         socket.on('disconnect', function () {
           console.warn('socket disconnect');
@@ -4520,6 +4532,7 @@ function () {
         });
         socket.on('connect', function () {
           console.log('socket connectd');
+          _kline.default.instance.socketConnected = true;
           _kline.default.instance.type === 'socket';
           Control.socketSubscribe();
         });
@@ -4575,69 +4588,106 @@ function () {
       console.log(socket.id, 'subscribe', _kline.default.instance.symbol);
       socket.emit('subscribe', _kline.default.instance.symbol);
       socket.on('message', function (message) {
-        var data = {};
-        var symbol = _kline.default.instance.symbol;
-        var period = _kline.default.instance.periodTagMap[_kline.default.instance.range];
-
-        if (message.trades && message.trades[symbol]) {//data[`trades`] = message.trades[symbol];
-        }
-
-        if (message.orderbooks && message.orderbooks[symbol]) {//data[`depths`] = message.orderbooks[symbol];
-        }
-
-        if (message.klines && message.klines[symbol] && message.klines[symbol][period]) {
-          data['lines'] = message.klines[symbol][period];
-        }
-
-        if (!Object.keys(data).length) {
-          return;
-        } //            console.log('message', data);
-
-
-        Control.requestSuccessHandler({
-          success: true,
-          data: data
-        });
+        Control.socketMessageHandler(message);
       });
     }
   }, {
     key: "socketMessageHandler",
     value: function socketMessageHandler(message) {
-      var intervalTime = _kline.default.instance.intervalTime < _kline.default.instance.range ? _kline.default.instance.intervalTime : _kline.default.instance.range; //if websocket pull
+      //set timer
+      var intervalTime = _kline.default.instance.intervalTime < _kline.default.instance.range ? _kline.default.instance.intervalTime : _kline.default.instance.range;
 
-      if (_kline.default.instance.pollTimer) {
-        clearTimeout(_kline.default.instance.pollTimer);
+      if (_kline.default.instance.socketTimer) {
+        window.clearTimeout(_kline.default.instance.socketTimer);
+        _kline.default.instance.socketTimer = null;
       }
 
-      _kline.default.instance.pollTimer = setTimeout(Control.requestData, intervalTime * 3);
+      _kline.default.instance.socketTimer = setTimeout(Control.requestData, intervalTime); //parse message
+
+      var data = {};
+      var symbol = _kline.default.instance.symbol;
+      var period = _kline.default.instance.periodTagMap[_kline.default.instance.range];
+
+      if (message.trades && message.trades[symbol]) {
+        data.trades = [];
+        message.trades[symbol].forEach(function (trade) {
+          data.trades.push({
+            "amount": trade[2],
+            "price": trade[1],
+            "tid": trade[0],
+            "time": trade[3],
+            "type": trade[4] ? "buy" : "sell"
+          });
+        });
+      }
+
+      if (message.orderbooks && message.orderbooks[symbol]) {
+        data["depths"] = message.orderbooks[symbol];
+      }
+
+      if (message.klines && message.klines[symbol] && message.klines[symbol][period]) {
+        data['lines'] = message.klines[symbol][period];
+      }
+
+      if (!Object.keys(data).length) {
+        return;
+      }
+
       (0, _jquery.default)("#chart_loading").removeClass("activated");
 
       var chart = _chart_manager.ChartManager.instance.getChart();
 
       chart.setTitle(); //append Kline.instance.data
 
-      _kline.default.instance.data = eval(res.data);
-      console.log("data", _kline.default.instance.data);
+      data = eval(data);
+
+      if (!_kline.default.instance.data) {
+        _kline.default.instance.data = {};
+      }
+
+      Object.keys(data).forEach(function (key) {
+        if (!_kline.default.instance.data[key]) {
+          _kline.default.instance.data[key] = data[key];
+          return;
+        }
+
+        if (key === "lines") {
+          var lines = data[key];
+
+          if (_kline.default.instance.data[key][0][0] === lines[0][0]) {
+            _kline.default.instance.data[key][0] = lines[0];
+          } else {
+            var _Kline$instance$data$;
+
+            (_Kline$instance$data$ = _kline.default.instance.data[key]).unshift.apply(_Kline$instance$data$, _toConsumableArray(lines));
+          }
+        } else if (key === "trades") {
+          var trades = data[key];
+          _kline.default.instance.data[key] = trades[0];
+        }
+      });
 
       var updateDataRes = _kline.default.instance.chartMgr.updateData("frame0.k0", _kline.default.instance.data.lines);
 
-      if (!updateDataRes) {
-        if (_kline.default.instance.timer) {
-          clearTimeout(_kline.default.instance.timer);
+      if (_kline.default.instance.showTrade) {
+        if (_kline.default.instance.data.trades && _kline.default.instance.data.trades.length > 0) {
+          _kline_trade.KlineTrade.instance.pushTrades(_kline.default.instance.data.trades);
+
+          _kline_trade.KlineTrade.instance.klineTradeInit = true;
         }
 
+        if (_kline.default.instance.data.depths) {
+          _kline_trade.KlineTrade.instance.updateDepth(_kline.default.instance.data.depths);
+        }
+      }
+
+      if (!updateDataRes) {
         _kline.default.instance.timer = setTimeout(Control.requestData, intervalTime);
         return;
       }
 
-      if (_kline.default.instance.data.trades && _kline.default.instance.data.trades.length > 0) {
-        _kline_trade.KlineTrade.instance.pushTrades(_kline.default.instance.data.trades);
-
-        _kline_trade.KlineTrade.instance.klineTradeInit = true;
-      }
-
-      if (_kline.default.instance.data.depths) {
-        _kline_trade.KlineTrade.instance.updateDepth(_kline.default.instance.data.depths);
+      if (_kline.default.instance.timer) {
+        window.clearTimeout(_kline.default.instance.timer);
       }
 
       Control.clearRefreshCounter();

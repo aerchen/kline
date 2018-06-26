@@ -5,6 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=Edge,chrome=1"/>
     <meta http-equiv="Content-Type" content="text/html; charset=GBK">
     <link href="../src/css/main.css" rel="stylesheet"/>
+    <script src="https://cdn.bootcss.com/lodash.js/4.17.10/lodash.js"></script>
     <script src="../lib/socket.io.js"></script>
     <script src="../lib/sockjs.js"></script>
     <script src="../lib/stomp.js"></script>
@@ -70,12 +71,13 @@
         type: "socket", // poll/stomp
         url: 'http://peatio.quachain.net/market/lines',//'https://127.0.0.1/v1/socket',
         limit: 500,
-        intervalTime: 5000,
+        intervalTime: 1000,
         subscribePath: "/trade/kline",
         sendPath: "/trade/kline",
-        debug: true,
+        debug: false,
         showTrade: false,
         enableSockjs: false,
+        disableFirebase: true,
         socketClient: socket
     });
 
