@@ -620,7 +620,6 @@ export class Control {
         if(Kline.instance.type === "socket") {
             //TODO add timer when conn't connect to websocket server
             let intervalTime = Kline.instance.intervalTime < Kline.instance.range ? Kline.instance.intervalTime : Kline.instance.range;
-            console.log('intervalTime', intervalTime);
             Kline.instance.socketTimer = setTimeout(Control.requestData, intervalTime);
 
             let socket = Kline.instance.socketClient;
@@ -746,12 +745,15 @@ export class Control {
             }
 
             if(key === `lines`) {
-                let lines = data[key];
-                if(Kline.instance.data[key][0][0] === lines[0][0]) {
-                    Kline.instance.data[key][0] = lines[0];
+                let line = data[key];
+                let count = Kline.instance.data.lines.length;
+                let lastLine = Kline.instance.data.lines[count - 1];
+                if(line[0] === lastLine[0]) {
+                    lastLine = line;
                 }
                 else {
-                    Kline.instance.data[key].unshift(...lines);
+                    Kline.instance.data.lines.push(line);
+                    //Kline.instance.data.lines.shift();
                 }
             }
             else if(key === `trades`) {

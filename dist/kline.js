@@ -3764,14 +3764,6 @@ var _jquery = _interopRequireDefault(__webpack_require__(23));
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-function _toConsumableArray(arr) { return _arrayWithoutHoles(arr) || _iterableToArray(arr) || _nonIterableSpread(); }
-
-function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance"); }
-
-function _iterableToArray(iter) { if (Symbol.iterator in Object(iter) || Object.prototype.toString.call(iter) === "[object Arguments]") return Array.from(iter); }
-
-function _arrayWithoutHoles(arr) { if (Array.isArray(arr)) { for (var i = 0, arr2 = new Array(arr.length); i < arr.length; i++) { arr2[i] = arr[i]; } return arr2; } }
-
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 function _defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } }
@@ -4519,7 +4511,6 @@ function () {
       if (_kline.default.instance.type === "socket") {
         //TODO add timer when conn't connect to websocket server
         var intervalTime = _kline.default.instance.intervalTime < _kline.default.instance.range ? _kline.default.instance.intervalTime : _kline.default.instance.range;
-        console.log('intervalTime', intervalTime);
         _kline.default.instance.socketTimer = setTimeout(Control.requestData, intervalTime);
         var socket = _kline.default.instance.socketClient;
         socket.on('disconnect', function () {
@@ -4652,14 +4643,15 @@ function () {
         }
 
         if (key === "lines") {
-          var lines = data[key];
+          var line = data[key];
+          var count = _kline.default.instance.data.lines.length;
+          var lastLine = _kline.default.instance.data.lines[count - 1];
 
-          if (_kline.default.instance.data[key][0][0] === lines[0][0]) {
-            _kline.default.instance.data[key][0] = lines[0];
+          if (line[0] === lastLine[0]) {
+            lastLine = line;
           } else {
-            var _Kline$instance$data$;
+            _kline.default.instance.data.lines.push(line); //Kline.instance.data.lines.shift();
 
-            (_Kline$instance$data$ = _kline.default.instance.data[key]).unshift.apply(_Kline$instance$data$, _toConsumableArray(lines));
           }
         } else if (key === "trades") {
           var trades = data[key];
