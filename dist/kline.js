@@ -4517,19 +4517,23 @@ function () {
           console.warn('socket disconnect');
           _kline.default.instance.socketConnected = false;
           _kline.default.instance.type === 'poll';
-          _kline.default.instance.timer = setTimeout(function () {
-            Control.requestData(true);
-          }, _kline.default.instance.intervalTime);
+          _kline.default.instance.timer = setTimeout(Control.requestData, _kline.default.instance.intervalTime);
         });
         socket.on('connect', function () {
-          console.log('socket connectd');
-          _kline.default.instance.socketConnected = true;
-          _kline.default.instance.type === 'socket';
-          Control.socketSubscribe();
+          Control.onSocketConnected(socket);
+        });
+        socket.on('reconnect', function (message) {
+          Control.onSocketConnected(socket);
+        });
+        socket.on('reconnecting', function (message) {
+          console.log('socket reconnecting');
+        });
+        socket.on('message', function (message) {
+          Control.socketMessageHandler(message);
         });
 
         if (socket.connected) {
-          Control.socketSubscribe();
+          Control.onSocketConnected(socket);
         } else {
           socket.connect();
         }
@@ -4573,19 +4577,49 @@ function () {
       });
     }
   }, {
-    key: "socketSubscribe",
-    value: function socketSubscribe() {
-      var socket = _kline.default.instance.socketClient;
-      console.log(socket.id, 'subscribe', _kline.default.instance.symbol);
+    key: "onSocketConnected",
+    value: function onSocketConnected(socket) {
+      console.log('socket connectd');
+      _kline.default.instance.socketConnected = true;
+      _kline.default.instance.type === 'socket';
       socket.emit('subscribe', _kline.default.instance.symbol);
-      socket.on('message', function (message) {
-        Control.socketMessageHandler(message);
-      });
     }
   }, {
     key: "socketMessageHandler",
     value: function socketMessageHandler(message) {
-      //set timer
+      //parse message
+      var data = {};
+      var symbol = _kline.default.instance.symbol;
+      var period = _kline.default.instance.periodTagMap[_kline.default.instance.range];
+
+      if (message.klines && message.klines[symbol] && message.klines[symbol][period]) {
+        data['lines'] = message.klines[symbol][period];
+      }
+
+      if (_kline.default.instance.showTrade) {
+        if (message.trades && message.trades[symbol]) {
+          data.trades = [];
+          message.trades[symbol].forEach(function (trade) {
+            data.trades.push({
+              "amount": trade[2],
+              "price": trade[1],
+              "tid": trade[0],
+              "time": trade[3],
+              "type": trade[4] ? "buy" : "sell"
+            });
+          });
+        }
+
+        if (message.orderbooks && message.orderbooks[symbol]) {
+          data["depths"] = message.orderbooks[symbol];
+        }
+      }
+
+      if (!Object.keys(data).length) {
+        return;
+      } //set timer
+
+
       var intervalTime = _kline.default.instance.intervalTime < _kline.default.instance.range ? _kline.default.instance.intervalTime : _kline.default.instance.range;
 
       if (_kline.default.instance.socketTimer) {
@@ -4593,37 +4627,7 @@ function () {
         _kline.default.instance.socketTimer = null;
       }
 
-      _kline.default.instance.socketTimer = setTimeout(Control.requestData, intervalTime); //parse message
-
-      var data = {};
-      var symbol = _kline.default.instance.symbol;
-      var period = _kline.default.instance.periodTagMap[_kline.default.instance.range];
-
-      if (message.trades && message.trades[symbol]) {
-        data.trades = [];
-        message.trades[symbol].forEach(function (trade) {
-          data.trades.push({
-            "amount": trade[2],
-            "price": trade[1],
-            "tid": trade[0],
-            "time": trade[3],
-            "type": trade[4] ? "buy" : "sell"
-          });
-        });
-      }
-
-      if (message.orderbooks && message.orderbooks[symbol]) {
-        data["depths"] = message.orderbooks[symbol];
-      }
-
-      if (message.klines && message.klines[symbol] && message.klines[symbol][period]) {
-        data['lines'] = message.klines[symbol][period];
-      }
-
-      if (!Object.keys(data).length) {
-        return;
-      }
-
+      _kline.default.instance.socketTimer = setTimeout(Control.requestData, intervalTime);
       (0, _jquery.default)("#chart_loading").removeClass("activated");
 
       var chart = _chart_manager.ChartManager.instance.getChart();
@@ -4674,12 +4678,11 @@ function () {
       }
 
       if (!updateDataRes) {
-        _kline.default.instance.timer = setTimeout(Control.requestData, intervalTime);
-        return;
-      }
+        if (!_kline.default.instance.timer) {
+          _kline.default.instance.timer = setTimeout(Control.requestData, intervalTime);
+        }
 
-      if (_kline.default.instance.timer) {
-        window.clearTimeout(_kline.default.instance.timer);
+        return;
       }
 
       Control.clearRefreshCounter();
@@ -15785,7 +15788,7 @@ function () {
         _kline.default.instance.subscribed.unsubscribe();
 
         _kline.default.instance.subscribed = _kline.default.instance.stompClient.subscribe(_kline.default.instance.subscribePath + '/' + _kline.default.instance.symbol + '/' + this._range, _control.Control.subscribeCallback);
-      } else if (_kline.default.instance.type === "socket" && _kline.default.instance.socketClient.connected) {
+      } else if (_kline.default.instance.type === "socket" && _kline.default.instance.socketConnected) {
         _kline.default.instance.socketClient.emit('unsubscribe');
 
         _kline.default.instance.socketClient.emit('subscribe', _kline.default.instance.symbol);

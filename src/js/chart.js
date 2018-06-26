@@ -124,7 +124,7 @@ export class Chart {
             Kline.instance.subscribed.unsubscribe();
             Kline.instance.subscribed = Kline.instance.stompClient.subscribe(Kline.instance.subscribePath + '/' + Kline.instance.symbol + '/' + this._range, Control.subscribeCallback);
         }
-        else if (Kline.instance.type === "socket" && Kline.instance.socketClient.connected) {
+        else if (Kline.instance.type === "socket" && Kline.instance.socketConnected) {
             Kline.instance.socketClient.emit('unsubscribe');
             Kline.instance.socketClient.emit('subscribe', Kline.instance.symbol);
         }
